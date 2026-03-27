@@ -12,8 +12,12 @@ import 'package:ptt_voice_app/main.dart';
 
 void main() {
   testWidgets('app renders chat title', (WidgetTester tester) async {
-    await tester.pumpWidget(const ProviderScope(child: PttVoiceApp()));
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: PttVoiceApp(launchedFromWidgetAutoRecord: true),
+      ),
+    );
 
-    expect(find.text('PTT Voice Assistant'), findsOneWidget);
+    expect(find.text('제이미'), findsOneWidget);
   });
 }

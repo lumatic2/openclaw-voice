@@ -44,7 +44,8 @@ class ChatController extends StateNotifier<ChatState> {
   bool _llmRequestCancelled = false;
   final Uuid _uuid = const Uuid();
 
-  static const int _maxMessages = 100;
+  static const int _maxMessages = 200;
+  static const int _maxLlmHistoryItems = 50;
   static const int _maxAutoRetries = 2;
   static const String _sessionsKey = 'chat_sessions_v1';
   static const String _currentSessionIdKey = 'current_session_id_v1';
@@ -337,12 +338,17 @@ class ChatController extends StateNotifier<ChatState> {
     _llmRequestCancelled = false;
     final historyWithoutCurrent =
         state.messages.take(state.messages.length - 1).toList();
+    final historyForLlm = historyWithoutCurrent.length <= _maxLlmHistoryItems
+        ? historyWithoutCurrent
+        : historyWithoutCurrent.sublist(
+            historyWithoutCurrent.length - _maxLlmHistoryItems,
+          );
     for (var attempt = 0; attempt <= _maxAutoRetries; attempt++) {
       if (_llmRequestCancelled) return;
       try {
         final reply = await _llmService.chat(
           message: latestInput,
-          history: historyWithoutCurrent,
+          history: historyForLlm,
         );
         if (_llmRequestCancelled) {
           return;

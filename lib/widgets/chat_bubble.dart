@@ -10,35 +10,49 @@ class ChatBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isUser = message.role == 'user';
+    final textColor =
+        isUser ? Colors.white : Colors.white.withValues(alpha: 0.94);
 
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 6),
+        margin: const EdgeInsets.symmetric(vertical: 4),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         constraints:
             BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
         decoration: BoxDecoration(
-          color: isUser ? Colors.blue.shade600 : Colors.grey.shade800,
-          borderRadius: BorderRadius.circular(16),
+          gradient: isUser
+              ? const LinearGradient(
+                  colors: [
+                    Color(0xFF2196F3),
+                    Color(0xFF1976D2),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                )
+              : null,
+          color: isUser ? null : const Color(0xFF2A2A3E),
+          borderRadius: BorderRadius.circular(18),
         ),
         child: Column(
-          crossAxisAlignment:
-              isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               message.text,
               style: TextStyle(
-                color: isUser ? Colors.white : Colors.grey.shade100,
+                color: textColor,
               ),
             ),
             const SizedBox(height: 4),
-            Text(
-              _timeText(message.timestamp),
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: isUser ? Colors.white70 : Colors.grey.shade400,
-                    fontSize: 10,
-                  ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                _timeText(message.timestamp),
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Colors.white.withValues(alpha: 0.6),
+                      fontSize: 11,
+                    ),
+              ),
             ),
           ],
         ),

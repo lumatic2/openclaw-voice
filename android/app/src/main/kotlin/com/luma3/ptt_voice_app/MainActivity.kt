@@ -1,5 +1,7 @@
 package com.luma3.ptt_voice_app
 
+import android.content.Intent
+import android.os.Bundle
 import android.util.Log
 import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.MessageEvent
@@ -14,8 +16,22 @@ class MainActivity : FlutterActivity(), MessageClient.OnMessageReceivedListener 
     private val statePath = "/ptt/state"
     private val togglePath = "/ptt/toggle"
     private val logTag = "WearBridge"
+    private var pendingAutoRecord = false
 
     private lateinit var methodChannel: MethodChannel
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        pendingAutoRecord = pendingAutoRecord || intent?.getBooleanExtra("auto_record", false) == true
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra("auto_record", false)) {
+            pendingAutoRecord = true
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -31,6 +47,11 @@ class MainActivity : FlutterActivity(), MessageClient.OnMessageReceivedListener 
                     }
 
                     pushStateToWear(status, result)
+                }
+
+                "consumeAutoRecord" -> {
+                    result.success(pendingAutoRecord)
+                    pendingAutoRecord = false
                 }
 
                 else -> result.notImplemented()

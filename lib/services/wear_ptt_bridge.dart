@@ -34,6 +34,17 @@ class WearPttBridge {
     }
   }
 
+  Future<bool> consumeAutoRecord() async {
+    if (!Platform.isAndroid || !_initialized) return false;
+
+    try {
+      final result = await _channel.invokeMethod<bool>('consumeAutoRecord');
+      return result ?? false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
   Future<void> dispose() async {
     if (!_initialized) return;
     _channel.setMethodCallHandler(null);

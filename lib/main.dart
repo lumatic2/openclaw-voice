@@ -1,20 +1,46 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 
 import 'models/chat_session.dart';
 import 'services/wear_ptt_bridge.dart';
 import 'state/chat_controller.dart';
 import 'state/app_phase.dart';
 import 'widgets/chat_bubble.dart';
+import 'widgets/splash_screen.dart';
 import 'widgets/status_banner.dart';
 import 'widgets/tts_settings_sheet.dart';
 
-void main() {
-  runApp(const ProviderScope(child: PttVoiceApp()));
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  var launchedFromWidgetAutoRecord = false;
+  if (Platform.isAndroid) {
+    try {
+      const channel = MethodChannel('com.luma3.ptt/wear');
+      launchedFromWidgetAutoRecord =
+          await channel.invokeMethod<bool>('consumeAutoRecord') ?? false;
+    } on MissingPluginException {
+      launchedFromWidgetAutoRecord = false;
+    }
+  }
+  runApp(
+    ProviderScope(
+      child: PttVoiceApp(
+        launchedFromWidgetAutoRecord: launchedFromWidgetAutoRecord,
+      ),
+    ),
+  );
 }
 
 class PttVoiceApp extends StatelessWidget {
-  const PttVoiceApp({super.key});
+  const PttVoiceApp({
+    super.key,
+    required this.launchedFromWidgetAutoRecord,
+  });
+
+  final bool launchedFromWidgetAutoRecord;
 
   @override
   Widget build(BuildContext context) {
@@ -28,26 +54,44 @@ class PttVoiceApp extends StatelessWidget {
         fontFamily: 'Pretendard',
       ),
       themeMode: ThemeMode.dark,
-      home: const ChatScreen(),
+      home: launchedFromWidgetAutoRecord
+          ? const ChatScreen(autoRecordOnLaunch: true)
+          : const SplashScreen(nextScreen: ChatScreen()),
     );
   }
 }
 
 class ChatScreen extends ConsumerStatefulWidget {
-  const ChatScreen({super.key});
+  const ChatScreen({super.key, this.autoRecordOnLaunch = false});
+
+  final bool autoRecordOnLaunch;
 
   @override
   ConsumerState<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends ConsumerState<ChatScreen> {
+class _ChatScreenState extends ConsumerState<ChatScreen>
+    with SingleTickerProviderStateMixin {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final WearPttBridge _wearBridge = WearPttBridge();
+  late final AnimationController _pulseController;
+  late final Animation<double> _pulseScale;
+  late final Animation<double> _pulseOpacity;
 
   @override
   void initState() {
     super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    _pulseScale = Tween<double>(begin: 1, end: 1.08).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+    _pulseOpacity = Tween<double>(begin: 0.25, end: 0.5).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeControllers();
     });
@@ -55,6 +99,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   void dispose() {
+    _pulseController.dispose();
     _wearBridge.dispose();
     _textController.dispose();
     _scrollController.dispose();
@@ -66,6 +111,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     await controller.initialize();
     await _wearBridge.initialize(onToggleRequested: controller.toggleRecording);
     await _wearBridge.pushState(ref.read(chatControllerProvider).phase);
+    final shouldAutoRecord =
+        widget.autoRecordOnLaunch || await _wearBridge.consumeAutoRecord();
+    if (shouldAutoRecord) {
+      await controller.startRecording();
+    }
   }
 
   void _scrollToBottom() {
@@ -207,10 +257,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
 
     if (state.phase == AppPhase.recording) {
+      if (!_pulseController.isAnimating) {
+        _pulseController.repeat(reverse: true);
+      }
       _textController.value = _textController.value.copyWith(
         text: state.draft,
         selection: TextSelection.collapsed(offset: state.draft.length),
       );
+    } else if (_pulseController.isAnimating) {
+      _pulseController.stop();
+      _pulseController.value = 0;
     }
 
     return Scaffold(
@@ -286,14 +342,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(
-                            Icons.mic_none_rounded,
-                            size: 56,
-                            color:
-                                Theme.of(context).colorScheme.onSurfaceVariant,
+                            Icons.mic_rounded,
+                            size: 64,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant
+                                .withValues(alpha: 0.42),
                           ),
                           const SizedBox(height: 12),
                           Text(
-                            '마이크를 눌러 대화를 시작하세요',
+                            '마이크를 눌러\n대화를 시작하세요',
                             textAlign: TextAlign.center,
                             style: Theme.of(context)
                                 .textTheme
@@ -301,7 +359,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                 ?.copyWith(
                                   color: Theme.of(context)
                                       .colorScheme
-                                      .onSurfaceVariant,
+                                      .onSurfaceVariant
+                                      .withValues(alpha: 0.82),
                                 ),
                           ),
                         ],
@@ -381,22 +440,46 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       icon: const Icon(Icons.close),
                     ),
                     const SizedBox(width: 8),
-                    IconButton.filled(
-                      iconSize: 28,
-                      constraints: const BoxConstraints.tightFor(
-                        width: 56,
-                        height: 56,
-                      ),
-                      style: IconButton.styleFrom(
-                        backgroundColor: Theme.of(context).colorScheme.error,
-                        foregroundColor: Theme.of(context).colorScheme.onError,
-                      ),
-                      onPressed: () {
-                        ref
-                            .read(chatControllerProvider.notifier)
-                            .stopRecordingKeepDraft();
+                    AnimatedBuilder(
+                      animation: _pulseController,
+                      builder: (context, child) {
+                        return Transform.scale(
+                          scale: _pulseScale.value,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.red.withValues(
+                                    alpha: _pulseOpacity.value,
+                                  ),
+                                  blurRadius: 14,
+                                  spreadRadius: 1.5,
+                                ),
+                              ],
+                            ),
+                            child: IconButton.filled(
+                              iconSize: 28,
+                              constraints: const BoxConstraints.tightFor(
+                                width: 56,
+                                height: 56,
+                              ),
+                              style: IconButton.styleFrom(
+                                backgroundColor:
+                                    Theme.of(context).colorScheme.error,
+                                foregroundColor:
+                                    Theme.of(context).colorScheme.onError,
+                              ),
+                              onPressed: () {
+                                ref
+                                    .read(chatControllerProvider.notifier)
+                                    .stopRecordingKeepDraft();
+                              },
+                              icon: const Icon(Icons.mic),
+                            ),
+                          ),
+                        );
                       },
-                      icon: const Icon(Icons.stop),
                     ),
                   ] else ...[
                     IconButton.filled(
