@@ -1,0 +1,44 @@
+name: ptt_voice_app
+description: Android-first push-to-talk voice assistant MVP.
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^2.5.1
+  speech_to_text: ^7.0.0
+  flutter_tts: ^4.0.2
+  http: ^1.2.1
+  permission_handler: ^11.3.1
+  shared_preferences: ^2.2.3
+  uuid: ^4.5.1
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  flutter_native_splash: ^2.4.1
+
+flutter:
+  uses-material-design: true
+  fonts:
+    - family: Pretendard
+      fonts:
+        - asset: assets/fonts/Pretendard-Regular.otf
+          weight: 400
+        - asset: assets/fonts/Pretendard-Medium.otf
+          weight: 500
+        - asset: assets/fonts/Pretendard-Bold.otf
+          weight: 700
+
+flutter_native_splash:
+  color: "#1A1A2E"
+  image: android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+  android: true
+  ios: false
+  web: false
