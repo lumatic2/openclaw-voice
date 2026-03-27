@@ -48,6 +48,7 @@ app.*.map.json
 watch/.gradle/
 watch/app/build/
 watch/local.properties
+watch/gradle.properties
 
 # Bridge
 bridge/node_modules/
