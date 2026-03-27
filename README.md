@@ -1,130 +1,235 @@
-# 제이미 (Jamie) — AI 음성 비서
+# openclaw-voice
 
-![Flutter](https://img.shields.io/badge/Flutter-3.41%2B-02569B?logo=flutter&logoColor=white)
+> Voice interface for OpenClaw AI — talk to your AI from phone and Galaxy Watch
+
+![Flutter](https://img.shields.io/badge/Flutter-3.x-02569B?logo=flutter&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-2.2-7F52FF?logo=kotlin&logoColor=white)
-![Wear OS](https://img.shields.io/badge/Wear%20OS-Standalone-0F9D58)
-![License](https://img.shields.io/badge/License-MIT-green.svg)
+![Wear OS](https://img.shields.io/badge/Wear%20OS-Galaxy%20Watch-0F9D58)
+![License MIT](https://img.shields.io/badge/License-MIT-green.svg)
+![OpenClaw](https://img.shields.io/badge/OpenClaw-AI-black)
 
-Galaxy Watch + Android 폰에서 동작하는 PTT(Push-to-Talk) AI 음성 비서
+Use OpenClaw AI with your voice, anywhere — from your phone or Galaxy Watch.
 
-## 주요 기능
+`openclaw-voice` is a push to talk voice assistant and wearable AI interface for OpenClaw. It connects Android phone and Galaxy Watch clients to a private bridge server, turning speech to text, LLM inference, and text to speech into one continuous voice workflow.
 
-### 폰 앱
-- Flutter + Riverpod 기반 채팅 UI
-- STT 입력, 브릿지 기반 LLM 응답, TTS 재생
-- 세션 저장, 전환, 삭제
-- Pretendard 폰트 기반 다크 테마 UI
+This matters if you want OpenClaw outside the terminal: on the move, on your wrist, and over your own network. The result is a practical `voice assistant` setup for `galaxy watch`, `wear os`, `flutter`, `LLM`, `speech to text`, and `text to speech` use cases without replacing the OpenClaw CLI itself.
 
-### 워치 앱
-- Wear OS 단독 음성 루프: STT -> LLM -> TTS
-- 녹음, 응답 대기, 재생 상태 표시와 진동 피드백
-- Tile 탭으로 즉시 PTT 실행
-- Tailscale 우선, Cloudflare Tunnel fallback 경로 지원
+## Features
 
-### 브릿지 서버
-- `Node.js` + `Express` 기반 OpenClaw 프록시
-- `/api/chat`, `/api/tunnel-url` 엔드포인트 제공
-- `OpenClaw CLI` 실행, 30초 타임아웃 및 요청 길이 제한 적용
+- `Phone App`: Flutter chat UI, microphone input, STT capture, OpenClaw LLM calls, TTS playback, session management, and a dark mode interface.
+- `Watch App`: Standalone `galaxy watch` voice loop on Wear OS with STT -> LLM -> TTS, haptic feedback, partial transcript display, and Tile launch support.
+- `Bridge Server`: Lightweight Node.js proxy that accepts device requests, runs the local OpenClaw CLI, and returns normalized replies.
+- `Private Connectivity`: Tailscale-first routing with optional tunnel fallback for watch access when direct tailnet access is not available.
+- `Korean-First Defaults`: Current watch STT/TTS and phone TTS are configured for Korean, with code-level language changes available before build.
 
-## 아키텍처 다이어그램
+## Architecture Diagram
 
 ```mermaid
 flowchart LR
-  Phone["Android 폰 앱<br/>Flutter + Riverpod"] -->|HTTPS /api/chat| Bridge["브릿지 서버<br/>Node.js + Express"]
-  Watch["Galaxy Watch 앱<br/>Wear OS + Kotlin"] -->|HTTPS /api/chat<br/>Tailscale 우선, Tunnel fallback| Bridge
+  Phone["Phone App<br/>Flutter + Riverpod<br/>Chat UI, STT, TTS"] -->|HTTPS /api/chat| Bridge["Bridge Server<br/>Node.js + Express"]
+  Watch["Galaxy Watch App<br/>Wear OS + Kotlin<br/>Standalone voice loop"] -->|Tailscale first<br/>Tunnel fallback| Bridge
+  Tile["Wear OS Tile<br/>launches auto-record"] --> Watch
   Bridge -->|execFile| OpenClaw["OpenClaw CLI<br/>agent --agent main"]
-  Ops["Tailscale Serve<br/>Cloudflare Tunnel<br/>LaunchAgent (macOS)"] -. 운영 계층 .-> Bridge
+  Bridge -->|GET /api/tunnel-url| Tunnel["bridge/tunnel-url.txt<br/>optional fallback URL source"]
+  Ops["Private network layer<br/>Tailscale / tunnel / LaunchAgent"] -.-> Bridge
 ```
 
-## 기술 스택
+## Tech Stack
 
-- 폰: `Flutter`, `flutter_riverpod`, `speech_to_text`, `flutter_tts`, `Pretendard`
-- 워치: `Kotlin`, `Compose for Wear OS`, `SpeechRecognizer`, `OkHttp`, `TextToSpeech`
-- 서버: `Node.js`, `Express`, `OpenClaw CLI`
-- 인프라: `Tailscale Serve`, `Cloudflare Tunnel`, `LaunchAgent (macOS)`
+| Layer | Stack | Notes |
+| --- | --- | --- |
+| Phone app | Flutter, `flutter_riverpod`, `speech_to_text`, `flutter_tts`, `shared_preferences` | Android-first push to talk chat client with persisted sessions |
+| Watch app | Kotlin, Compose for Wear OS, `SpeechRecognizer`, `TextToSpeech`, OkHttp, Wear Tiles | Standalone `wearable AI` client for Galaxy Watch |
+| Bridge server | Node.js, Express | Exposes `/api/chat` and `/api/tunnel-url` |
+| OpenClaw runtime | OpenClaw CLI | Invoked as `openclaw agent --agent main --message ...` |
+| Connectivity | Tailscale, optional tunnel fallback | Designed for private access instead of a public hosted API |
 
-## 프로젝트 구조
+## Project Structure
 
 ```text
-lib/        Flutter 폰 앱
-watch/      Wear OS 워치 앱
-bridge/     Node.js 브릿지 서버
+.
+|-- lib/                 Flutter phone app source
+|-- assets/              Fonts and shared app assets
+|-- bridge/              Node.js bridge server for OpenClaw CLI
+|-- watch/               Standalone Wear OS app
+|-- watch_companion/     Separate companion Flutter sandbox
+|-- android/             Flutter Android runner for the phone app
+|-- ios/                 Flutter iOS runner
+|-- linux/               Flutter Linux runner
+|-- macos/               Flutter macOS runner
+|-- web/                 Flutter web runner
+|-- windows/             Flutter Windows runner
+`-- test/                Flutter test files
 ```
 
-## 사전 준비
+## Getting Started
 
-- Flutter stable
-- Dart SDK 3.3+
-- Node.js
-- Java 17, Android SDK 35
-- Galaxy Watch / Android 폰 마이크 권한
-- OpenClaw CLI 실행 환경
-- 문서 검증 기준: Flutter 3.41.6, Node 24.13.0
+### Prerequisites
 
-## 설치 방법
+- Flutter SDK compatible with Dart `>=3.3.0 <4.0.0`
+- Android SDK and Java 17
+- Wear OS build toolchain for the `watch/` module (`compileSdk 35`, `minSdk 30`)
+- Node.js installed on the bridge host
+- Tailscale installed and working on the machine that runs the bridge
+- OpenClaw CLI installed on the bridge host
+- Android phone and Galaxy Watch microphone permission enabled
 
-### 1. 폰 앱
+Notes:
+
+- The current bridge code points to an OpenClaw binary at `~/.nvm/versions/node/v24.14.0/bin/openclaw`. Adjust that path for your machine before relying on the documented startup flow.
+- Public-facing tunnel automation is not fully codified in this repo. Treat that part as runtime validation territory.
+
+### Phone app build
 
 ```bash
+cd C:/Users/1/projects/ptt-voice-app
 flutter pub get
 flutter build apk --debug
 ```
 
-예상 결과: `build/app/outputs/flutter-apk/app-debug.apk`
+Expected artifact:
 
-### 2. 워치 앱
+```text
+build/app/outputs/flutter-apk/app-debug.apk
+```
 
-macOS / Linux:
+For local runs with an explicit bridge URL and token:
 
 ```bash
-cd watch
+flutter run --dart-define=OPENCLAW_BASE_URL=https://YOUR_TAILSCALE_HOST --dart-define=OPENCLAW_BEARER_TOKEN=YOUR_TOKEN
+```
+
+### Watch app build
+
+macOS or Linux:
+
+```bash
+cd C:/Users/1/projects/ptt-voice-app/watch
 ./gradlew assembleDebug
 ```
 
-Windows:
+Windows PowerShell:
 
 ```powershell
-cd watch
+cd C:/Users/1/projects/ptt-voice-app/watch
 .\gradlew.bat assembleDebug
 ```
 
-예상 결과: `watch/app/build/outputs/apk/debug/app-debug.apk`
+Expected artifact:
 
-### 3. 브릿지 서버
+```text
+watch/app/build/outputs/apk/debug/app-debug.apk
+```
+
+### Bridge server setup
 
 ```bash
-cd bridge
+cd C:/Users/1/projects/ptt-voice-app/bridge
 npm install
-node server.js
+npm start
 ```
 
-예상 결과: `OpenClaw bridge listening on 0.0.0.0:18790`
+Expected output:
 
-## 설정
-
-- Tailscale 연결이 필요합니다. 워치 앱은 Tailscale URL을 먼저 시도하고, 실패 시 Cloudflare Tunnel URL을 fallback으로 사용합니다.
-- 폰 앱은 `--dart-define`으로 브릿지 URL과 토큰을 덮어쓸 수 있습니다.
-
-```bash
-flutter run --dart-define=OPENCLAW_BASE_URL=https://YOUR_BRIDGE_HOST --dart-define=OPENCLAW_BEARER_TOKEN=YOUR_TOKEN
+```text
+OpenClaw bridge listening on 0.0.0.0:18790
 ```
 
-- 브릿지 설정은 `bridge/server.js`의 `PORT`, `TOKEN`, `OPENCLAW` 실행 경로에서 관리합니다.
-- 워치 설정은 `watch/app/src/main/kotlin/com/luma3/ptt_watch/BridgeClient.kt`의 `TAILSCALE_URL`, `FALLBACK_URL`, `AUTH_TOKEN`을 브릿지와 동일하게 맞춰야 합니다.
+Additional repo assets:
 
-## 운영 메모
+- `bridge/start.sh` starts the server with `node server.js`
+- `bridge/ai.openclaw.bridge.plist` is a macOS LaunchAgent example for keeping the bridge alive
 
-- 가장 흔한 실패 원인은 브릿지 `TOKEN`, `URL`, `PORT` 불일치입니다. 폰, 워치, 브릿지 값을 함께 맞추세요.
-- Cloudflare Tunnel fallback을 쓰려면 `bridge/tunnel-url.txt`를 공급하는 별도 운영 절차가 필요합니다.
-- 문제 발생 시 마지막으로 수정한 `PORT`, `TOKEN`, `TAILSCALE_URL`, `FALLBACK_URL`을 이전 값으로 되돌린 뒤 브릿지를 재시작하세요.
-- `bridge/server.js`의 `OPENCLAW` 실행 경로는 환경별로 검증이 필요합니다.
+## Configuration
 
-## 스크린샷
+### Tailscale setup
 
-TODO — 나중에 추가
+1. Run the bridge on a machine that also has OpenClaw CLI installed.
+2. Expose that bridge through a reachable private HTTPS URL on your Tailscale network.
+3. Point the phone app to that base URL with `OPENCLAW_BASE_URL`.
+4. Point the watch app to that full chat endpoint by updating `watch/app/src/main/kotlin/com/luma3/ptt_watch/BridgeClient.kt`.
 
-## 라이선스
+Current code expectations:
 
-MIT
+- Phone app expects a base URL such as `https://YOUR_TAILSCALE_HOST`
+- Watch app expects a full endpoint such as `https://YOUR_TAILSCALE_HOST/api/chat`
 
-> 참고: 현재 저장소 루트에는 `LICENSE` 파일이 없습니다. 공개 배포 전 추가를 권장합니다.
+Safety note:
+
+- If the watch cannot reach Tailscale directly, it falls back to the saved tunnel URL and then tries `/api/tunnel-url` from the Tailscale host to discover a fresh fallback.
+
+### Bridge server token and port
+
+Bridge settings are currently hard-coded in `bridge/server.js`:
+
+- `HOST`
+- `PORT`
+- `TOKEN`
+- `OPENCLAW`
+
+You must keep these aligned across all three surfaces:
+
+- Bridge: `bridge/server.js`
+- Phone: `OPENCLAW_BEARER_TOKEN` passed through `--dart-define`
+- Watch: `BridgeConfig.AUTH_TOKEN` in `watch/app/src/main/kotlin/com/luma3/ptt_watch/BridgeClient.kt`
+
+Primary failure mode:
+
+- `401 Unauthorized` or silent request failure usually means token mismatch.
+- `502` at the bridge usually means the local `OPENCLAW` path is wrong or OpenClaw execution failed.
+
+Rollback guidance:
+
+- If a configuration change breaks the app, revert the most recent edits to `PORT`, `TOKEN`, `OPENCLAW`, `TAILSCALE_URL`, and `FALLBACK_URL`, then restart the bridge first before retesting the devices.
+
+### Tunnel fallback
+
+If you use the watch tunnel fallback flow:
+
+- Store only the tunnel base URL in `bridge/tunnel-url.txt`
+- Example: `https://example.trycloudflare.com`
+- Do not include `/api/chat` in that file; the watch client appends it automatically
+
+### Language settings
+
+Current language behavior in code:
+
+- Phone TTS defaults to Korean in `lib/services/tts_service.dart`
+- Watch STT defaults to `ko-KR` in `watch/app/src/main/kotlin/com/luma3/ptt_watch/SttManager.kt`
+- Watch TTS defaults to `Locale.KOREAN` in `watch/app/src/main/kotlin/com/luma3/ptt_watch/PttViewModel.kt`
+- Phone STT currently relies on the device speech recognizer defaults in `lib/services/stt_service.dart`
+
+To change languages, update those constants before building. The repo is Korean-first today, but the `voice assistant` flow itself is not tied to Korean.
+
+## How It Works
+
+1. The phone app or Galaxy Watch captures your speech with local STT.
+2. The client sends the recognized text to the bridge server over `/api/chat`.
+3. The bridge validates the bearer token, builds a prompt, and runs OpenClaw CLI locally.
+4. OpenClaw returns a reply, which the bridge normalizes into JSON.
+5. The client renders the response, plays TTS, and on the phone persists the chat session for later reuse.
+
+Watch-specific behavior:
+
+- The watch tries the Tailscale endpoint first.
+- If that fails, it tries the saved fallback tunnel URL.
+- If needed, it asks the bridge for a new fallback URL through `/api/tunnel-url`.
+
+## License
+
+MIT.
+
+Note: this repository currently does not include a root `LICENSE` file. Add one before public distribution so the license grant is explicit.
+
+## 한국어 (Korean)
+
+`openclaw-voice`는 OpenClaw를 폰과 Galaxy Watch에서 음성으로 사용할 수 있게 만드는 프로젝트입니다. Flutter 기반 안드로이드 폰 앱, Kotlin 기반 Wear OS 워치 앱, 그리고 OpenClaw CLI를 호출하는 Node.js 브리지 서버로 구성됩니다. 핵심 목표는 터미널 밖에서도 자연스러운 `push to talk` 경험을 제공하는 것입니다. 즉, `openclaw`, `LLM`, `speech to text`, `text to speech`, `wear os`, `galaxy watch` 흐름을 하나의 실사용 가능한 음성 인터페이스로 묶는 데 초점을 둡니다.
+
+주요 기능:
+
+- 폰 앱: Flutter 채팅 UI, 음성 입력, OpenClaw 응답 호출, TTS 재생, 세션 저장/전환/삭제
+- 워치 앱: Galaxy Watch 단독 음성 루프, 타일에서 즉시 실행, 진동 피드백, Tailscale 우선 연결
+- 브리지 서버: OpenClaw CLI 프록시, `/api/chat` 및 `/api/tunnel-url` 제공
+- 한국어 우선 설정: 현재 워치 STT/TTS와 폰 TTS가 한국어 기준으로 구성됨
+
+자세한 설정 방법은 위 영어 문서를 참조하세요.
