@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 import '../models/chat_message.dart';
 import '../models/chat_session.dart';
 import '../models/message_type.dart';
+import '../models/tts_settings.dart';
 import '../services/llm_service.dart';
 import '../services/stt_service.dart';
 import '../services/tts_service.dart';
@@ -115,6 +116,42 @@ class ChatController extends StateNotifier<ChatState> {
     }
   }
 
+  Future<TtsSettings> getTtsSettings() async {
+    return _ttsService.getSettings();
+  }
+
+  Future<List<String>> getTtsEngines() async {
+    return _ttsService.getEngines();
+  }
+
+  Future<List<Map<String, String>>> getTtsVoices() async {
+    return _ttsService.getVoices();
+  }
+
+  Future<void> updateTtsEngine(String engineName) async {
+    await _ttsService.setEngine(engineName);
+  }
+
+  Future<void> updateTtsVoice({
+    required String name,
+    required String locale,
+  }) async {
+    await _ttsService.setVoice(name: name, locale: locale);
+  }
+
+  Future<void> updateSpeechRate(double rate) async {
+    await _ttsService.setSpeechRate(rate);
+  }
+
+  Future<void> updatePitch(double pitch) async {
+    await _ttsService.setPitch(pitch);
+  }
+
+  Future<void> previewVoice(String text) async {
+    await _ttsService.stop();
+    await _ttsService.speak(text);
+  }
+
   Future<void> startNewSession() async {
     final newSession = _newEmptySession();
     final nextSessions = [newSession, ...state.sessions];
@@ -192,13 +229,26 @@ class ChatController extends StateNotifier<ChatState> {
       );
       _startRecordingTimer();
 
-      await _sttService.start(onResult: (words, _) {
+      await _sttService.start(onResult: (words, finalResult) {
         state = state.copyWith(liveTranscript: words, draft: '$prefix$words');
+        if (finalResult && words.trim().isNotEmpty) {
+          _stopRecordingTimer();
+          _autoSendAfterStt('$prefix$words'.trim());
+        }
       });
     } catch (e) {
       _stopRecordingTimer();
       _setError('녹음 시작 실패: $e');
     }
+  }
+
+  Future<void> _autoSendAfterStt(String text) async {
+    if (state.phase != AppPhase.recording) return;
+    await _sttService.stop();
+    await _enqueueAndResolveUserMessage(
+      text: text,
+      type: MessageType.voice,
+    );
   }
 
   Future<void> _stopRecordingKeepDraft() async {

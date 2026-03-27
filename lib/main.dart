@@ -7,6 +7,7 @@ import 'state/chat_controller.dart';
 import 'state/app_phase.dart';
 import 'widgets/chat_bubble.dart';
 import 'widgets/status_banner.dart';
+import 'widgets/tts_settings_sheet.dart';
 
 void main() {
   runApp(const ProviderScope(child: PttVoiceApp()));
@@ -185,6 +186,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
+  Future<void> _showTtsSettingsBottomSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => const TtsSettingsSheet(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(chatControllerProvider);
@@ -233,6 +242,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               }
               if (value == 'session_list') {
                 await _showSessionListBottomSheet();
+                return;
+              }
+              if (value == 'voice_settings') {
+                await _showTtsSettingsBottomSheet();
               }
             },
             itemBuilder: (_) => const [
@@ -243,6 +256,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               PopupMenuItem(
                 value: 'session_list',
                 child: Text('이전 세션 목록'),
+              ),
+              PopupMenuItem(
+                value: 'voice_settings',
+                child: Text('음성 설정'),
               ),
             ],
           ),
@@ -278,7 +295,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           Text(
                             '마이크를 눌러 대화를 시작하세요',
                             textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.bodyMedium
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
                                 ?.copyWith(
                                   color: Theme.of(context)
                                       .colorScheme
