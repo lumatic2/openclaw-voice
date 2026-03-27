@@ -1,7 +1,6 @@
 package com.luma3.ptt_watch
 
 import android.content.Context
-import android.content.SharedPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -13,16 +12,17 @@ import org.json.JSONObject
 
 object BridgeConfig {
     const val AUTH_TOKEN = "REDACTED_TOKEN"
-    const val FALLBACK_URL = "https://were-deals-grocery-audit.trycloudflare.com/api/chat"
+    const val TAILSCALE_URL = "https://YOUR_TAILSCALE_HOST:8443/api/chat"
+    const val FALLBACK_URL = "https://mug-ourselves-introduces-pets.trycloudflare.com/api/chat"
     private const val PREFS_NAME = "ptt_bridge"
     private const val KEY_URL = "chat_url"
 
-    fun getSavedUrl(context: Context): String {
+    fun getSavedFallbackUrl(context: Context): String {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getString(KEY_URL, FALLBACK_URL) ?: FALLBACK_URL
     }
 
-    fun saveUrl(context: Context, url: String) {
+    fun saveFallbackUrl(context: Context, url: String) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit().putString(KEY_URL, url).apply()
     }
@@ -31,15 +31,33 @@ object BridgeConfig {
 class BridgeClient(
     private val context: Context,
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+        .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
         .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
         .writeTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
         .build()
 ) {
     suspend fun sendMessage(message: String): Result<String> = withContext(Dispatchers.IO) {
-        runCatching {
-            val url = BridgeConfig.getSavedUrl(context)
+        // Try Tailscale first (via phone bluetooth)
+        val tailscaleResult = tryUrl(BridgeConfig.TAILSCALE_URL, message)
+        if (tailscaleResult.isSuccess) return@withContext tailscaleResult
 
+        // Fallback to trycloudflare (direct wifi)
+        val fallbackUrl = BridgeConfig.getSavedFallbackUrl(context)
+        val fallbackResult = tryUrl(fallbackUrl, message)
+        if (fallbackResult.isSuccess) return@withContext fallbackResult
+
+        // Try fetching new tunnel URL via Tailscale
+        val newUrl = fetchTunnelUrl()
+        if (newUrl != null && newUrl != fallbackUrl) {
+            BridgeConfig.saveFallbackUrl(context, newUrl)
+            return@withContext tryUrl(newUrl, message)
+        }
+
+        fallbackResult
+    }
+
+    private fun tryUrl(url: String, message: String): Result<String> {
+        return runCatching {
             val payload = JSONObject()
                 .put("message", message)
                 .put("history", JSONArray())
@@ -52,14 +70,27 @@ class BridgeClient(
                 .build()
 
             httpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    error("http_${response.code}")
-                }
-
+                if (!response.isSuccessful) error("http_${response.code}")
                 val body = response.body?.string().orEmpty()
                 JSONObject(body).optString("reply").takeIf { it.isNotBlank() }
                     ?: error("invalid_reply")
             }
         }
+    }
+
+    private fun fetchTunnelUrl(): String? {
+        return try {
+            val url = BridgeConfig.TAILSCALE_URL.replace("/api/chat", "/api/tunnel-url")
+            val request = Request.Builder()
+                .url(url)
+                .header("Authorization", "Bearer ${BridgeConfig.AUTH_TOKEN}")
+                .get()
+                .build()
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return null
+                val tunnelBase = JSONObject(response.body?.string().orEmpty()).optString("url")
+                if (tunnelBase.isNotBlank()) "$tunnelBase/api/chat" else null
+            }
+        } catch (_: Exception) { null }
     }
 }
