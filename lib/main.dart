@@ -47,10 +47,10 @@ class PttVoiceApp extends StatelessWidget {
       title: 'Jamie',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        scaffoldBackgroundColor: const Color(0xFF0F0F1A),
+        scaffoldBackgroundColor: const Color(0xFF111F2F),
         colorScheme: const ColorScheme.dark(
           primary: Color(0xFF3B82F6),
-          surface: Color(0xFF1E1E2E),
+          surface: Color(0xFF1E2D42),
           onSurface: Colors.white,
           onSurfaceVariant: Color(0xFF9CA3AF),
           error: Color(0xFFE53935),
@@ -126,7 +126,7 @@ class _AnimatedSplashState extends State<_AnimatedSplash>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF111E2F),
+      backgroundColor: const Color(0xFF111F2F),
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -382,7 +382,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             const SizedBox(width: 16),
             const CircleAvatar(
               radius: 22,
-              backgroundColor: Color(0xFF1E1E2E),
+              backgroundColor: Color(0xFF1E2D42),
               child: ClipOval(
                 child: Image(
                   image: AssetImage('assets/icon/app_icon.png'),
@@ -403,7 +403,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         ),
         elevation: 0,
         scrolledUnderElevation: 0,
-        backgroundColor: Theme.of(context).colorScheme.surface,
+        backgroundColor: const Color(0xFF111F2F),
         actions: [
           IconButton(
             onPressed: () {
@@ -563,7 +563,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                                 ),
                             isDense: true,
                             filled: true,
-                            fillColor: const Color(0xFF1E1E2E),
+                            fillColor: const Color(0xFF1E2D42),
                             contentPadding: const EdgeInsets.symmetric(
                               horizontal: 16,
                               vertical: 12,
