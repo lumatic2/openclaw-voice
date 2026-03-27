@@ -26,11 +26,11 @@ class ChatController extends StateNotifier<ChatState> {
         _llmService = LlmService(
           baseUrl: const String.fromEnvironment(
             'OPENCLAW_BASE_URL',
-            defaultValue: 'https://YOUR_TAILSCALE_HOST:8443',
+            defaultValue: '',
           ),
           token: const String.fromEnvironment(
             'OPENCLAW_BEARER_TOKEN',
-            defaultValue: 'REDACTED_TOKEN',
+            defaultValue: '',
           ),
         ),
         super(ChatState.initial());

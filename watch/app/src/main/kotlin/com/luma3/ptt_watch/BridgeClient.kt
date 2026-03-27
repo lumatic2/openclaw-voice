@@ -11,9 +11,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 object BridgeConfig {
-    const val AUTH_TOKEN = "REDACTED_TOKEN"
-    const val TAILSCALE_URL = "https://YOUR_TAILSCALE_HOST:8443/api/chat"
-    const val FALLBACK_URL = "https://mug-ourselves-introduces-pets.trycloudflare.com/api/chat"
+    const val AUTH_TOKEN = BuildConfig.BRIDGE_AUTH_TOKEN
+    const val TAILSCALE_URL = BuildConfig.TAILSCALE_URL
+    const val FALLBACK_URL = BuildConfig.FALLBACK_URL
     private const val PREFS_NAME = "ptt_bridge"
     private const val KEY_URL = "chat_url"
 

@@ -4,7 +4,7 @@ const os = require("node:os");
 
 const HOST = "0.0.0.0";
 const PORT = 18790;
-const TOKEN = "REDACTED_TOKEN";
+const TOKEN = process.env.BRIDGE_AUTH_TOKEN || "";
 const OPENCLAW = `${os.homedir()}/.nvm/versions/node/v24.14.0/bin/openclaw`;
 const MAX_MESSAGE = 4000;
 const MAX_HISTORY_ITEMS = 20;

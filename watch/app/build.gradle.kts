@@ -14,6 +14,14 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+
+        buildConfigField("String", "BRIDGE_AUTH_TOKEN", "\"${project.findProperty("BRIDGE_AUTH_TOKEN") ?: ""}\"")
+        buildConfigField("String", "TAILSCALE_URL", "\"${project.findProperty("TAILSCALE_URL") ?: ""}\"")
+        buildConfigField("String", "FALLBACK_URL", "\"${project.findProperty("FALLBACK_URL") ?: ""}\"")
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     buildTypes {
