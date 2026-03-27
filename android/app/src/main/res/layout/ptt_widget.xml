@@ -4,13 +4,14 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/widget_circle_bg"
-    android:padding="8dp">
+    android:elevation="3dp"
+    android:padding="10dp">
 
     <ImageView
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_width="46dp"
+        android:layout_height="46dp"
+        android:layout_gravity="center"
         android:contentDescription="Jamie"
         android:scaleType="centerInside"
-        android:src="@mipmap/ic_launcher"
-        android:tint="#FFFFFFFF" />
+        android:src="@mipmap/ic_launcher" />
 </FrameLayout>

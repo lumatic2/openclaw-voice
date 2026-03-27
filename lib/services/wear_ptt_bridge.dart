@@ -11,12 +11,17 @@ class WearPttBridge {
 
   Future<void> initialize({
     required Future<void> Function() onToggleRequested,
+    required Future<void> Function() onAutoRecordRequested,
   }) async {
     if (!Platform.isAndroid || _initialized) return;
 
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'onToggle') {
         await onToggleRequested();
+        return;
+      }
+      if (call.method == 'onAutoRecord') {
+        await onAutoRecordRequested();
       }
     });
     _initialized = true;

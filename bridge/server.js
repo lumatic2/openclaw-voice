@@ -7,7 +7,7 @@ const PORT = 18790;
 const TOKEN = process.env.BRIDGE_AUTH_TOKEN || "";
 const OPENCLAW = `${os.homedir()}/.nvm/versions/node/v24.14.0/bin/openclaw`;
 const MAX_MESSAGE = 4000;
-const MAX_HISTORY_ITEMS = 50;
+const MAX_HISTORY_ITEMS = 100;
 const MAX_HISTORY_CONTENT = 4000;
 
 const app = express();
@@ -84,7 +84,7 @@ app.post("/api/chat", async (req, res) => {
   }
 
   for (const item of history) {
-    if (!item || (item.role !== "user" && item.role !== "assistant") || typeof item.content !== "string" || item.content.length > MAX_HISTORY_CONTENT) {
+    if (!item || (item.role !== "user" && item.role !== "assistant" && item.role !== "system") || typeof item.content !== "string" || item.content.length > MAX_HISTORY_CONTENT) {
       return res.status(400).json({ error: "Invalid history format" });
     }
   }

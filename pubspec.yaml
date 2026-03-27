@@ -26,6 +26,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/icon/
   fonts:
     - family: Pretendard
       fonts:
@@ -37,8 +39,11 @@ flutter:
           weight: 700
 
 flutter_native_splash:
-  color: "#1A1A2E"
-  image: android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+  color: "#111E2F"
+  image: assets/icon/app_icon.png
   android: true
   ios: false
   web: false
+  android_12:
+    color: "#111E2F"
+    image: assets/icon/app_icon.png

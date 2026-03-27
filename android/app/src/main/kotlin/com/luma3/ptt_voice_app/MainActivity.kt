@@ -30,6 +30,9 @@ class MainActivity : FlutterActivity(), MessageClient.OnMessageReceivedListener 
         setIntent(intent)
         if (intent.getBooleanExtra("auto_record", false)) {
             pendingAutoRecord = true
+            if (::methodChannel.isInitialized) {
+                methodChannel.invokeMethod("onAutoRecord", null)
+            }
         }
     }
 

@@ -9,7 +9,6 @@ import 'services/wear_ptt_bridge.dart';
 import 'state/chat_controller.dart';
 import 'state/app_phase.dart';
 import 'widgets/chat_bubble.dart';
-import 'widgets/splash_screen.dart';
 import 'widgets/status_banner.dart';
 import 'widgets/tts_settings_sheet.dart';
 
@@ -45,18 +44,117 @@ class PttVoiceApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '제이미',
+      title: 'Jamie',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorSchemeSeed: Colors.blue,
+        scaffoldBackgroundColor: const Color(0xFF0F0F1A),
+        colorScheme: const ColorScheme.dark(
+          primary: Color(0xFF3B82F6),
+          surface: Color(0xFF1E1E2E),
+          onSurface: Colors.white,
+          onSurfaceVariant: Color(0xFF9CA3AF),
+          error: Color(0xFFE53935),
+          onError: Colors.white,
+        ),
         brightness: Brightness.dark,
         useMaterial3: true,
         fontFamily: 'Pretendard',
       ),
       themeMode: ThemeMode.dark,
       home: launchedFromWidgetAutoRecord
-          ? const ChatScreen(autoRecordOnLaunch: true)
-          : const SplashScreen(nextScreen: ChatScreen()),
+          ? ChatScreen(autoRecordOnLaunch: true)
+          : const _AnimatedSplash(),
+    );
+  }
+}
+
+class _AnimatedSplash extends StatefulWidget {
+  const _AnimatedSplash();
+
+  @override
+  State<_AnimatedSplash> createState() => _AnimatedSplashState();
+}
+
+class _AnimatedSplashState extends State<_AnimatedSplash>
+    with TickerProviderStateMixin {
+  late final AnimationController _scaleCtrl;
+  late final AnimationController _fadeCtrl;
+  late final Animation<double> _scale;
+  late final Animation<double> _fade;
+
+  @override
+  void initState() {
+    super.initState();
+    _scaleCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
+    _fadeCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    _scale = Tween<double>(begin: 0.6, end: 1.0).animate(
+      CurvedAnimation(parent: _scaleCtrl, curve: Curves.easeOutBack),
+    );
+    _fade = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeIn);
+
+    _scaleCtrl.forward();
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) _fadeCtrl.forward();
+    });
+    Future.delayed(const Duration(milliseconds: 1400), () {
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        PageRouteBuilder<void>(
+          transitionDuration: const Duration(milliseconds: 400),
+          pageBuilder: (_, anim, __) => FadeTransition(
+            opacity: anim,
+            child: const ChatScreen(),
+          ),
+        ),
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _scaleCtrl.dispose();
+    _fadeCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF111E2F),
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ScaleTransition(
+              scale: _scale,
+              child: const Image(
+                image: AssetImage('assets/icon/app_icon.png'),
+                width: 100,
+                height: 100,
+              ),
+            ),
+            const SizedBox(height: 20),
+            FadeTransition(
+              opacity: _fade,
+              child: const Text(
+                'Jamie',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 26,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -75,22 +173,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final WearPttBridge _wearBridge = WearPttBridge();
-  late final AnimationController _pulseController;
-  late final Animation<double> _pulseScale;
-  late final Animation<double> _pulseOpacity;
+  late final AnimationController _recordBlinkController;
+  late final Animation<double> _recordBlinkOpacity;
 
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(
+    _recordBlinkController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 900),
+      duration: const Duration(milliseconds: 850),
     );
-    _pulseScale = Tween<double>(begin: 1, end: 1.08).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-    _pulseOpacity = Tween<double>(begin: 0.25, end: 0.5).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    _recordBlinkOpacity = Tween<double>(begin: 0.7, end: 1.0).animate(
+      CurvedAnimation(parent: _recordBlinkController, curve: Curves.easeInOut),
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeControllers();
@@ -99,7 +193,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
 
   @override
   void dispose() {
-    _pulseController.dispose();
+    _recordBlinkController.dispose();
     _wearBridge.dispose();
     _textController.dispose();
     _scrollController.dispose();
@@ -109,7 +203,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   Future<void> _initializeControllers() async {
     final controller = ref.read(chatControllerProvider.notifier);
     await controller.initialize();
-    await _wearBridge.initialize(onToggleRequested: controller.toggleRecording);
+    await _wearBridge.initialize(
+      onToggleRequested: controller.toggleRecording,
+      onAutoRecordRequested: () async {
+        final phase = ref.read(chatControllerProvider).phase;
+        if (phase != AppPhase.recording &&
+            phase != AppPhase.thinking &&
+            phase != AppPhase.speaking) {
+          await controller.startRecording();
+        }
+      },
+    );
     await _wearBridge.pushState(ref.read(chatControllerProvider).phase);
     final shouldAutoRecord =
         widget.autoRecordOnLaunch || await _wearBridge.consumeAutoRecord();
@@ -257,24 +361,49 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     });
 
     if (state.phase == AppPhase.recording) {
-      if (!_pulseController.isAnimating) {
-        _pulseController.repeat(reverse: true);
+      if (!_recordBlinkController.isAnimating) {
+        _recordBlinkController.repeat(reverse: true);
       }
       _textController.value = _textController.value.copyWith(
         text: state.draft,
         selection: TextSelection.collapsed(offset: state.draft.length),
       );
-    } else if (_pulseController.isAnimating) {
-      _pulseController.stop();
-      _pulseController.value = 0;
+    } else if (_recordBlinkController.isAnimating) {
+      _recordBlinkController.stop();
+      _recordBlinkController.value = 1;
     }
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('제이미'),
+        automaticallyImplyLeading: false,
+        titleSpacing: 0,
+        title: Row(
+          children: [
+            const SizedBox(width: 16),
+            const CircleAvatar(
+              radius: 22,
+              backgroundColor: Color(0xFF1E1E2E),
+              child: ClipOval(
+                child: Image(
+                  image: AssetImage('assets/icon/app_icon.png'),
+                  width: 44,
+                  height: 44,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              'Jamie',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w500,
+                  ),
+            ),
+          ],
+        ),
         elevation: 0,
         scrolledUnderElevation: 0,
-        backgroundColor: Colors.transparent,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         actions: [
           IconButton(
             onPressed: () {
@@ -323,16 +452,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       ),
       body: Column(
         children: [
-          StatusBanner(
-            phase: state.phase,
-            errorMessage: state.errorMessage,
-            recordingElapsed: state.recordingElapsed,
-            onRetry: () =>
-                ref.read(chatControllerProvider.notifier).retryLastFailed(),
-            onCancel: () => ref
-                .read(chatControllerProvider.notifier)
-                .cancelCurrentOperation(),
-          ),
           Expanded(
             child: state.messages.isEmpty
                 ? Center(
@@ -341,26 +460,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(
-                            Icons.mic_rounded,
-                            size: 64,
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurfaceVariant
-                                .withValues(alpha: 0.42),
+                          Opacity(
+                            opacity: 0.3,
+                            child: Image.asset(
+                              'assets/icon/app_icon.png',
+                              width: 80,
+                              height: 80,
+                            ),
                           ),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 14),
                           Text(
-                            '마이크를 눌러\n대화를 시작하세요',
+                            '마이크를 눌러 대화를 시작하세요',
                             textAlign: TextAlign.center,
                             style: Theme.of(context)
                                 .textTheme
                                 .bodyMedium
                                 ?.copyWith(
+                                  fontSize: 14,
                                   color: Theme.of(context)
                                       .colorScheme
                                       .onSurfaceVariant
-                                      .withValues(alpha: 0.82),
+                                      .withValues(alpha: 0.5),
                                 ),
                           ),
                         ],
@@ -371,10 +491,35 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                     controller: _scrollController,
                     padding:
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    itemCount: state.messages.length,
+                    itemCount: state.messages.length +
+                        ((state.phase == AppPhase.thinking ||
+                                state.phase == AppPhase.speaking ||
+                                state.phase == AppPhase.error)
+                            ? 1
+                            : 0),
                     itemBuilder: (context, index) {
+                      if (index == state.messages.length) {
+                        return StatusBanner(
+                          phase: state.phase,
+                          errorMessage: state.errorMessage,
+                          recordingElapsed: state.recordingElapsed,
+                          onRetry: () => ref
+                              .read(chatControllerProvider.notifier)
+                              .retryLastFailed(),
+                          onCancel: () => ref
+                              .read(chatControllerProvider.notifier)
+                              .cancelCurrentOperation(),
+                        );
+                      }
                       final message = state.messages[index];
-                      return ChatBubble(message: message);
+                      final previousMessage =
+                          index > 0 ? state.messages[index - 1] : null;
+                      final isGroupedWithPrevious = previousMessage != null &&
+                          previousMessage.role == message.role;
+                      return ChatBubble(
+                        message: message,
+                        isGroupedWithPrevious: isGroupedWithPrevious,
+                      );
                     },
                   ),
           ),
@@ -382,151 +527,161 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             top: false,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-              child: Row(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _textController,
-                      enabled: state.phase != AppPhase.thinking &&
-                          state.phase != AppPhase.speaking,
-                      decoration: InputDecoration(
-                        hintText: '메시지 입력...',
-                        isDense: true,
-                        filled: true,
-                        fillColor: Theme.of(context)
-                            .colorScheme
-                            .surfaceContainerHighest,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide.none,
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide.none,
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide(
-                            color: Theme.of(context).colorScheme.primary,
-                            width: 1.2,
-                          ),
-                        ),
-                      ),
-                      minLines: 1,
-                      maxLines: 3,
-                      onChanged: (value) => ref
+                  if (state.phase == AppPhase.recording)
+                    StatusBanner(
+                      phase: state.phase,
+                      errorMessage: state.errorMessage,
+                      recordingElapsed: state.recordingElapsed,
+                      onRetry: () => ref
                           .read(chatControllerProvider.notifier)
-                          .setDraft(value),
+                          .retryLastFailed(),
+                      onCancel: () => ref
+                          .read(chatControllerProvider.notifier)
+                          .cancelCurrentOperation(),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  if (state.phase == AppPhase.recording) ...[
-                    IconButton.filledTonal(
-                      iconSize: 28,
-                      constraints: const BoxConstraints.tightFor(
-                        width: 56,
-                        height: 56,
-                      ),
-                      onPressed: () async {
-                        await ref
-                            .read(chatControllerProvider.notifier)
-                            .cancelRecordingAndClearDraft();
-                        _textController.clear();
-                      },
-                      icon: const Icon(Icons.close),
-                    ),
-                    const SizedBox(width: 8),
-                    AnimatedBuilder(
-                      animation: _pulseController,
-                      builder: (context, child) {
-                        return Transform.scale(
-                          scale: _pulseScale.value,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.red.withValues(
-                                    alpha: _pulseOpacity.value,
-                                  ),
-                                  blurRadius: 14,
-                                  spreadRadius: 1.5,
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _textController,
+                          enabled: state.phase != AppPhase.thinking &&
+                              state.phase != AppPhase.speaking,
+                          decoration: InputDecoration(
+                            hintText: '메시지 입력...',
+                            hintStyle: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
+                                  fontSize: 14,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant
+                                      .withValues(alpha: 0.8),
                                 ),
-                              ],
+                            isDense: true,
+                            filled: true,
+                            fillColor: const Color(0xFF1E1E2E),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
                             ),
-                            child: IconButton.filled(
-                              iconSize: 28,
-                              constraints: const BoxConstraints.tightFor(
-                                width: 56,
-                                height: 56,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: BorderSide.none,
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: BorderSide.none,
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: BorderSide(
+                                color: Theme.of(context).colorScheme.primary,
+                                width: 1.2,
                               ),
-                              style: IconButton.styleFrom(
-                                backgroundColor:
-                                    Theme.of(context).colorScheme.error,
-                                foregroundColor:
-                                    Theme.of(context).colorScheme.onError,
-                              ),
-                              onPressed: () {
-                                ref
-                                    .read(chatControllerProvider.notifier)
-                                    .stopRecordingKeepDraft();
-                              },
-                              icon: const Icon(Icons.mic),
                             ),
                           ),
-                        );
-                      },
-                    ),
-                  ] else ...[
-                    IconButton.filled(
-                      iconSize: 28,
-                      constraints: const BoxConstraints.tightFor(
-                        width: 56,
-                        height: 56,
+                          minLines: 1,
+                          maxLines: 3,
+                          onChanged: (value) => ref
+                              .read(chatControllerProvider.notifier)
+                              .setDraft(value),
+                        ),
                       ),
-                      style: IconButton.styleFrom(
-                        backgroundColor: Colors.red.shade400,
-                        foregroundColor: Colors.white,
-                      ),
-                      onPressed: state.phase == AppPhase.thinking ||
-                              state.phase == AppPhase.speaking
-                          ? null
-                          : () {
-                              ref
-                                  .read(chatControllerProvider.notifier)
-                                  .startRecording();
-                            },
-                      icon: const Icon(Icons.mic),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton.filled(
-                      iconSize: 28,
-                      constraints: const BoxConstraints.tightFor(
-                        width: 56,
-                        height: 56,
-                      ),
-                      style: IconButton.styleFrom(
-                        backgroundColor: Theme.of(context).colorScheme.primary,
-                        foregroundColor:
-                            Theme.of(context).colorScheme.onPrimary,
-                      ),
-                      onPressed: state.phase == AppPhase.thinking ||
-                              state.phase == AppPhase.speaking
-                          ? null
-                          : () {
-                              final text = _textController.text;
-                              ref
-                                  .read(chatControllerProvider.notifier)
-                                  .sendText(text);
-                              _textController.clear();
-                            },
-                      icon: const Icon(Icons.send),
-                    ),
-                  ],
+                      const SizedBox(width: 8),
+                      if (state.phase == AppPhase.recording) ...[
+                        IconButton.filledTonal(
+                          iconSize: 24,
+                          constraints: const BoxConstraints.tightFor(
+                            width: 48,
+                            height: 48,
+                          ),
+                          onPressed: () async {
+                            await ref
+                                .read(chatControllerProvider.notifier)
+                                .cancelRecordingAndClearDraft();
+                            _textController.clear();
+                          },
+                          icon: const Icon(Icons.close),
+                        ),
+                        const SizedBox(width: 8),
+                        AnimatedBuilder(
+                          animation: _recordBlinkController,
+                          builder: (context, child) {
+                            return Opacity(
+                              opacity: _recordBlinkOpacity.value,
+                              child: IconButton.filled(
+                                iconSize: 24,
+                                constraints: const BoxConstraints.tightFor(
+                                  width: 48,
+                                  height: 48,
+                                ),
+                                style: IconButton.styleFrom(
+                                  backgroundColor: const Color(0xFFE53935),
+                                  foregroundColor: Colors.white,
+                                ),
+                                onPressed: () {
+                                  ref
+                                      .read(chatControllerProvider.notifier)
+                                      .stopRecordingKeepDraft();
+                                },
+                                icon: const Icon(Icons.mic),
+                              ),
+                            );
+                          },
+                        ),
+                      ] else ...[
+                        IconButton.filled(
+                          iconSize: 24,
+                          constraints: const BoxConstraints.tightFor(
+                            width: 48,
+                            height: 48,
+                          ),
+                          style: IconButton.styleFrom(
+                            backgroundColor: const Color(0xFFE53935),
+                            foregroundColor: Colors.white,
+                          ),
+                          onPressed: state.phase == AppPhase.thinking ||
+                                  state.phase == AppPhase.speaking
+                              ? null
+                              : () {
+                                  ref
+                                      .read(chatControllerProvider.notifier)
+                                      .startRecording();
+                                },
+                          icon: const Icon(Icons.mic),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton.filled(
+                          iconSize: 24,
+                          constraints: const BoxConstraints.tightFor(
+                            width: 48,
+                            height: 48,
+                          ),
+                          style: IconButton.styleFrom(
+                            backgroundColor:
+                                Theme.of(context).colorScheme.primary,
+                            foregroundColor:
+                                Theme.of(context).colorScheme.onPrimary,
+                          ),
+                          onPressed: state.phase == AppPhase.thinking ||
+                                  state.phase == AppPhase.speaking
+                              ? null
+                              : () {
+                                  final text = _textController.text;
+                                  ref
+                                      .read(chatControllerProvider.notifier)
+                                      .sendText(text);
+                                  _textController.clear();
+                                },
+                          icon: const Icon(Icons.send),
+                        ),
+                      ],
+                    ],
+                  ),
                 ],
               ),
             ),

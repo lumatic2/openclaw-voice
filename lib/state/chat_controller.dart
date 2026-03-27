@@ -43,14 +43,19 @@ class ChatController extends StateNotifier<ChatState> {
   String? _lastFailedInput;
   bool _llmRequestCancelled = false;
   final Uuid _uuid = const Uuid();
+  String? _compressedSummary;
+  Map<String, String> _compressedSummariesBySession = {};
 
   static const int _maxMessages = 200;
-  static const int _maxLlmHistoryItems = 50;
+  static const int _compressThreshold = 40;
+  static const int _keepRecent = 10;
+  static const int _compressBatch = 30;
   static const int _maxAutoRetries = 2;
   static const String _sessionsKey = 'chat_sessions_v1';
   static const String _currentSessionIdKey = 'current_session_id_v1';
   static const String _legacyHistoryKey = 'chat_history_v1';
   static const String _ttsAutoPlayKey = 'tts_auto_play_v1';
+  static const String _compressedSummariesKey = 'compressed_summaries_v1';
 
   Future<void> initialize() async {
     try {
@@ -166,6 +171,8 @@ class ChatController extends StateNotifier<ChatState> {
       phase: AppPhase.idle,
       clearError: true,
     );
+    _compressedSummary = null;
+    await _persistCompressedSummary(newSession.id, null);
     await _persistSessions(nextSessions, newSession.id);
   }
 
@@ -182,6 +189,7 @@ class ChatController extends StateNotifier<ChatState> {
       phase: AppPhase.idle,
       clearError: true,
     );
+    _compressedSummary = _readCompressedSummary(session.id);
     await _persistSessions(state.sessions, session.id);
   }
 
@@ -208,6 +216,9 @@ class ChatController extends StateNotifier<ChatState> {
       phase: AppPhase.idle,
       clearError: true,
     );
+    _compressedSummariesBySession.remove(sessionId);
+    _compressedSummary = _readCompressedSummary(nextCurrentSessionId);
+    await _persistAllCompressedSummaries();
     await _persistSessions(remaining, nextCurrentSessionId);
   }
 
@@ -338,11 +349,7 @@ class ChatController extends StateNotifier<ChatState> {
     _llmRequestCancelled = false;
     final historyWithoutCurrent =
         state.messages.take(state.messages.length - 1).toList();
-    final historyForLlm = historyWithoutCurrent.length <= _maxLlmHistoryItems
-        ? historyWithoutCurrent
-        : historyWithoutCurrent.sublist(
-            historyWithoutCurrent.length - _maxLlmHistoryItems,
-          );
+    final historyForLlm = await _buildHistoryForLlm(historyWithoutCurrent);
     for (var attempt = 0; attempt <= _maxAutoRetries; attempt++) {
       if (_llmRequestCancelled) return;
       try {
@@ -398,6 +405,55 @@ class ChatController extends StateNotifier<ChatState> {
     }
   }
 
+  Future<List<ChatMessage>> _buildHistoryForLlm(
+      List<ChatMessage> history) async {
+    if (history.length <= _compressThreshold) {
+      return history;
+    }
+
+    final targetWindow = history.sublist(history.length - _compressThreshold);
+    if (targetWindow.length <= _keepRecent) {
+      return history;
+    }
+    final toCompress = targetWindow.sublist(0, _compressBatch);
+    final recent = targetWindow.sublist(targetWindow.length - _keepRecent);
+    final summary = await _requestHistorySummary(toCompress);
+    if (summary == null || summary.isEmpty) {
+      return history;
+    }
+
+    final normalized = '[이전 대화 요약] $summary';
+    final changed = _compressedSummary != normalized;
+    _compressedSummary = normalized;
+    if (changed) {
+      await _persistCompressedSummary(state.currentSessionId, normalized);
+    }
+    final summaryMessage = ChatMessage(
+      id: 'summary-${DateTime.now().microsecondsSinceEpoch}',
+      role: 'system',
+      text: normalized,
+      timestamp: DateTime.now(),
+      type: MessageType.text,
+    );
+    return [summaryMessage, ...recent];
+  }
+
+  Future<String?> _requestHistorySummary(List<ChatMessage> source) async {
+    try {
+      final text = source
+          .map((m) => '${m.role}: ${m.text.trim()}')
+          .where((line) => line.isNotEmpty)
+          .join('\n');
+      if (text.isEmpty) return null;
+      final prompt = '다음 대화를 3-4문장으로 요약해줘. 핵심 맥락과 중요한 정보만 유지해:\n\n$text';
+      final summary = await _llmService.chat(message: prompt, history: const []);
+      final trimmed = summary.trim();
+      return trimmed.isEmpty ? null : trimmed;
+    } catch (_) {
+      return null;
+    }
+  }
+
   void _startRecordingTimer() {
     _recordingTimer?.cancel();
     _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -429,6 +485,7 @@ class ChatController extends StateNotifier<ChatState> {
 
   Future<void> _loadSessions() async {
     final prefs = await SharedPreferences.getInstance();
+    _compressedSummariesBySession = _loadCompressedSummaries(prefs);
     final raw = prefs.getString(_sessionsKey);
     try {
       if (raw == null || raw.isEmpty) {
@@ -440,6 +497,7 @@ class ChatController extends StateNotifier<ChatState> {
             currentSessionId: fallbackSession.id,
             messages: [],
           );
+          _compressedSummary = _readCompressedSummary(fallbackSession.id);
           await _persistSessions([fallbackSession], fallbackSession.id);
         }
         return;
@@ -458,6 +516,7 @@ class ChatController extends StateNotifier<ChatState> {
           currentSessionId: fallbackSession.id,
           messages: [],
         );
+        _compressedSummary = _readCompressedSummary(fallbackSession.id);
         await _persistSessions([fallbackSession], fallbackSession.id);
         return;
       }
@@ -475,6 +534,7 @@ class ChatController extends StateNotifier<ChatState> {
         currentSessionId: resolvedCurrentId,
         messages: _trimMessages(currentSession.messages),
       );
+      _compressedSummary = _readCompressedSummary(resolvedCurrentId);
     } catch (_) {
       await prefs.remove(_sessionsKey);
       await _migrateLegacyHistoryToSession(prefs);
@@ -485,6 +545,7 @@ class ChatController extends StateNotifier<ChatState> {
           currentSessionId: fallbackSession.id,
           messages: [],
         );
+        _compressedSummary = _readCompressedSummary(fallbackSession.id);
         await _persistSessions([fallbackSession], fallbackSession.id);
       }
     }
@@ -513,6 +574,7 @@ class ChatController extends StateNotifier<ChatState> {
         currentSessionId: defaultSession.id,
         messages: defaultSession.messages,
       );
+      _compressedSummary = _readCompressedSummary(defaultSession.id);
       await _persistSessions([defaultSession], defaultSession.id);
       await prefs.remove(_legacyHistoryKey);
     } catch (_) {
@@ -548,6 +610,47 @@ class ChatController extends StateNotifier<ChatState> {
       jsonEncode(sessions.map((session) => session.toJson()).toList()),
     );
     await prefs.setString(_currentSessionIdKey, currentSessionId);
+  }
+
+  Future<void> _persistCompressedSummary(
+    String sessionId,
+    String? summary,
+  ) async {
+    if (sessionId.isEmpty) return;
+    if (summary == null || summary.isEmpty) {
+      _compressedSummariesBySession.remove(sessionId);
+    } else {
+      _compressedSummariesBySession[sessionId] = summary;
+    }
+    await _persistAllCompressedSummaries();
+  }
+
+  Future<void> _persistAllCompressedSummaries() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _compressedSummariesKey,
+      jsonEncode(_compressedSummariesBySession),
+    );
+  }
+
+  Map<String, String> _loadCompressedSummaries(SharedPreferences prefs) {
+    final raw = prefs.getString(_compressedSummariesKey);
+    if (raw == null || raw.isEmpty) return {};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return {};
+      return decoded.map(
+        (key, value) => MapEntry(key.toString(), value?.toString() ?? ''),
+      );
+    } catch (_) {
+      return {};
+    }
+  }
+
+  String? _readCompressedSummary(String sessionId) {
+    final value = _compressedSummariesBySession[sessionId]?.trim();
+    if (value == null || value.isEmpty) return null;
+    return value;
   }
 
   ChatSession _newEmptySession() {
