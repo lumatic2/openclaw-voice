@@ -82,7 +82,7 @@ Notes:
 ### Phone app build
 
 ```bash
-cd C:/Users/1/projects/ptt-voice-app
+cd /path/to/openclaw-voice
 flutter pub get
 flutter build apk --debug
 ```
@@ -104,14 +104,14 @@ flutter run --dart-define=OPENCLAW_BASE_URL=https://YOUR_TAILSCALE_HOST --dart-d
 macOS or Linux:
 
 ```bash
-cd C:/Users/1/projects/ptt-voice-app/watch
+cd /path/to/openclaw-voice/watch
 ./gradlew assembleDebug
 ```
 
 Windows PowerShell:
 
 ```powershell
-cd C:/Users/1/projects/ptt-voice-app/watch
+cd /path/to/openclaw-voice/watch
 .\gradlew.bat assembleDebug
 ```
 
@@ -124,7 +124,7 @@ watch/app/build/outputs/apk/debug/app-debug.apk
 ### Bridge server setup
 
 ```bash
-cd C:/Users/1/projects/ptt-voice-app/bridge
+cd /path/to/openclaw-voice/bridge
 npm install
 npm start
 ```
