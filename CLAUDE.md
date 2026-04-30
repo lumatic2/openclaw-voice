@@ -44,3 +44,18 @@ npm start
 
 - 새 기능 -> 항상 계획 먼저, 구현 나중
 - 브릿지 토큰/URL 변경 시 `bridge`, `phone`, `watch` 3개 경로 설정을 동시에 검증
+
+## 워치 APK 설치
+
+**Wi-Fi ADB** 로만 설치한다 (폰 사이드로드 사용 X).
+
+- 워치 ADB 주소: `192.168.200.136:41433` (Wi-Fi 디버깅, 같은 WiFi에서만)
+- 빌드: `cd watch && ./gradlew assembleDebug` → `watch/app/build/outputs/apk/debug/app-debug.apk`
+- 설치:
+  ```bash
+  adb connect 192.168.200.136:41433
+  adb -s 192.168.200.136:41433 install -r watch/app/build/outputs/apk/debug/app-debug.apk
+  ```
+- **무선 디버깅 화면이 열려 있어야만 포트가 살아있음** — 워치 슬립 들어가면 닫힘. 화면 켜둔 채로 작업
+- 처음 연결 시 페어링 필요 (`adb pair <ip>:<페어링포트>` + 코드). "이 컴퓨터에서 항상 허용" 체크하면 다음부턴 `adb connect` 만으로 OK
+- 워치 ADB 포트는 활성화할 때마다 바뀔 수 있음 — 안 붙으면 무선 디버깅 화면에서 새 포트 확인
