@@ -6,6 +6,9 @@ const HOST = "0.0.0.0";
 const PORT = 18790;
 const TOKEN = process.env.BRIDGE_AUTH_TOKEN || "";
 const OPENCLAW = `${os.homedir()}/.nvm/versions/node/v24.14.0/bin/openclaw`;
+const SESSION_ID = process.env.OPENCLAW_SESSION_ID || "";
+const CHANNEL = process.env.OPENCLAW_CHANNEL || "";
+const DELIVER = process.env.OPENCLAW_DELIVER === "true";
 const MAX_MESSAGE = 4000;
 const MAX_HISTORY_ITEMS = 100;
 const MAX_HISTORY_CONTENT = 4000;
@@ -44,11 +47,15 @@ function parseReply(stdout) {
   return lines.length ? lines[lines.length - 1] : out;
 }
 
-function runOpenClaw(prompt) {
+function runOpenClaw(message) {
+  const args = ["agent", "--agent", "main", "--message", message];
+  if (SESSION_ID) args.push("--session-id", SESSION_ID);
+  if (CHANNEL) args.push("--channel", CHANNEL);
+  if (DELIVER) args.push("--deliver");
   return new Promise((resolve, reject) => {
     execFile(
       OPENCLAW,
-      ["agent", "--agent", "main", "--message", prompt],
+      args,
       { timeout: 90000, maxBuffer: 1024 * 1024 },
       (error, stdout, stderr) => {
         if (error) {
@@ -89,10 +96,11 @@ app.post("/api/chat", async (req, res) => {
     }
   }
 
-  const prompt = buildPrompt(message.trim(), history);
+  // When SESSION_ID is set, the gateway carries history server-side; ignore client history.
+  const payload = SESSION_ID ? message.trim() : buildPrompt(message.trim(), history);
 
   try {
-    const reply = await runOpenClaw(prompt);
+    const reply = await runOpenClaw(payload);
     if (!reply) return res.status(502).json({ error: "Empty reply from OpenClaw" });
     return res.json({ reply });
   } catch (err) {
