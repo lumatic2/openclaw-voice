@@ -13,4 +13,8 @@ if [ -n "${NVM_DIR:-}" ] && [ -s "$NVM_DIR/nvm.sh" ]; then
   # shellcheck disable=SC1091
   . "$NVM_DIR/nvm.sh"
 fi
+# Auto-install dependencies on fresh checkout / new working directory
+if [ ! -d "$DIR/node_modules" ]; then
+  npm install --omit=dev --no-audit --no-fund
+fi
 exec node server.js

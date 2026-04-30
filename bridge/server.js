@@ -1,11 +1,23 @@
 const express = require("express");
-const { execFile } = require("node:child_process");
-const os = require("node:os");
+const { execFile, execFileSync } = require("node:child_process");
 
 const HOST = "0.0.0.0";
 const PORT = 18790;
 const TOKEN = process.env.BRIDGE_AUTH_TOKEN || "";
-const OPENCLAW = `${os.homedir()}/.nvm/versions/node/v24.14.0/bin/openclaw`;
+
+function resolveOpenClaw() {
+  if (process.env.OPENCLAW_BIN) return process.env.OPENCLAW_BIN;
+  try {
+    return execFileSync("/usr/bin/which", ["openclaw"], { encoding: "utf8" }).trim();
+  } catch (_) {}
+  try {
+    // nvm path is not in PATH for non-login shells; try a login shell
+    return execFileSync("/bin/bash", ["-lc", "command -v openclaw"], { encoding: "utf8" }).trim();
+  } catch (_) {}
+  throw new Error("openclaw binary not found (set OPENCLAW_BIN)");
+}
+const OPENCLAW = resolveOpenClaw();
+console.log(`[bridge] using openclaw: ${OPENCLAW}`);
 const REPLY_CHANNEL = process.env.OPENCLAW_REPLY_CHANNEL || "";
 const REPLY_TO = process.env.OPENCLAW_REPLY_TO || "";
 const DELIVER = process.env.OPENCLAW_DELIVER === "true";
