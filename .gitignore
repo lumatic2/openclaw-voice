@@ -57,3 +57,4 @@ bridge/node_modules/
 android/.gradle/
 *.apk
 local.properties
+bridge/.env

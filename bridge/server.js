@@ -49,7 +49,7 @@ function runOpenClaw(prompt) {
     execFile(
       OPENCLAW,
       ["agent", "--agent", "main", "--message", prompt],
-      { timeout: 30000, maxBuffer: 1024 * 1024 },
+      { timeout: 90000, maxBuffer: 1024 * 1024 },
       (error, stdout, stderr) => {
         if (error) {
           const err = new Error("OPENCLAW_EXEC_FAILED");
@@ -97,7 +97,7 @@ app.post("/api/chat", async (req, res) => {
     return res.json({ reply });
   } catch (err) {
     if (err && (err.signal === "SIGTERM" || err.code === null)) {
-      return res.status(504).json({ error: "OpenClaw timeout (30s)" });
+      return res.status(504).json({ error: "OpenClaw timeout (90s)" });
     }
     const detail = err && err.stderr ? err.stderr.slice(0, 300) : "OpenClaw execution failed";
     return res.status(502).json({ error: detail });
