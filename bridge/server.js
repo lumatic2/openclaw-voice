@@ -6,8 +6,8 @@ const HOST = "0.0.0.0";
 const PORT = 18790;
 const TOKEN = process.env.BRIDGE_AUTH_TOKEN || "";
 const OPENCLAW = `${os.homedir()}/.nvm/versions/node/v24.14.0/bin/openclaw`;
-const SESSION_ID = process.env.OPENCLAW_SESSION_ID || "";
-const CHANNEL = process.env.OPENCLAW_CHANNEL || "";
+const REPLY_CHANNEL = process.env.OPENCLAW_REPLY_CHANNEL || "";
+const REPLY_TO = process.env.OPENCLAW_REPLY_TO || "";
 const DELIVER = process.env.OPENCLAW_DELIVER === "true";
 const MAX_MESSAGE = 4000;
 const MAX_HISTORY_ITEMS = 100;
@@ -49,8 +49,8 @@ function parseReply(stdout) {
 
 function runOpenClaw(message) {
   const args = ["agent", "--agent", "main", "--message", message];
-  if (SESSION_ID) args.push("--session-id", SESSION_ID);
-  if (CHANNEL) args.push("--channel", CHANNEL);
+  if (REPLY_CHANNEL) args.push("--reply-channel", REPLY_CHANNEL);
+  if (REPLY_TO) args.push("--reply-to", REPLY_TO);
   if (DELIVER) args.push("--deliver");
   return new Promise((resolve, reject) => {
     execFile(
@@ -96,8 +96,9 @@ app.post("/api/chat", async (req, res) => {
     }
   }
 
-  // When SESSION_ID is set, the gateway carries history server-side; ignore client history.
-  const payload = SESSION_ID ? message.trim() : buildPrompt(message.trim(), history);
+  // When REPLY_TO is set, the gateway routes to a server-side session that already
+  // carries history (e.g., Telegram); ignore client-supplied history.
+  const payload = REPLY_TO ? message.trim() : buildPrompt(message.trim(), history);
 
   try {
     const reply = await runOpenClaw(payload);
