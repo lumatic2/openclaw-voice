@@ -78,24 +78,26 @@ function readMessages(sessionId) {
     .filter(Boolean);
 }
 
-function extractAssistantText(msg) {
-  if (!msg) return "";
-  if (typeof msg.content === "string") return msg.content;
-  if (Array.isArray(msg.content)) {
-    return msg.content
-      .map((c) => (typeof c === "string" ? c : c?.text || c?.content || ""))
+function extractAssistantText(entry) {
+  // entry shape: {type:"message", message:{role:"assistant", content:[{type:"text", text:"..."}]}}
+  const inner = entry?.message;
+  if (!inner) return "";
+  const c = inner.content;
+  if (typeof c === "string") return c;
+  if (Array.isArray(c)) {
+    return c
+      .map((item) => (typeof item === "string" ? item : item?.text || ""))
       .filter(Boolean)
       .join("\n");
   }
-  if (typeof msg.text === "string") return msg.text;
   return "";
 }
 
-function findReplyAfter(messages, baselineCount) {
-  for (let i = messages.length - 1; i >= baselineCount; i--) {
-    const m = messages[i];
-    if (m && (m.role === "assistant" || m.type === "assistant" || m.role === "model")) {
-      const text = extractAssistantText(m);
+function findReplyAfter(entries, baselineCount) {
+  for (let i = entries.length - 1; i >= baselineCount; i--) {
+    const e = entries[i];
+    if (e?.type === "message" && e.message?.role === "assistant") {
+      const text = extractAssistantText(e);
       if (text) return text.trim();
     }
   }
