@@ -18,6 +18,7 @@ function resolveOpenClaw() {
 }
 const OPENCLAW = resolveOpenClaw();
 console.log(`[bridge] using openclaw: ${OPENCLAW}`);
+console.log(`[bridge] env: REPLY_CHANNEL=${REPLY_CHANNEL || "(empty)"} REPLY_TO=${REPLY_TO || "(empty)"} DELIVER=${DELIVER}`);
 const REPLY_CHANNEL = process.env.OPENCLAW_REPLY_CHANNEL || "";
 const REPLY_TO = process.env.OPENCLAW_REPLY_TO || "";
 const DELIVER = process.env.OPENCLAW_DELIVER === "true";
@@ -64,6 +65,7 @@ function runOpenClaw(message) {
   if (REPLY_CHANNEL) args.push("--reply-channel", REPLY_CHANNEL);
   if (REPLY_TO) args.push("--reply-to", REPLY_TO);
   if (DELIVER) args.push("--deliver");
+  console.log(`[bridge] spawn openclaw args: ${JSON.stringify(args)}`);
   return new Promise((resolve, reject) => {
     execFile(
       OPENCLAW,
