@@ -17,11 +17,11 @@ function resolveOpenClaw() {
   throw new Error("openclaw binary not found (set OPENCLAW_BIN)");
 }
 const OPENCLAW = resolveOpenClaw();
-console.log(`[bridge] using openclaw: ${OPENCLAW}`);
-console.log(`[bridge] env: REPLY_CHANNEL=${REPLY_CHANNEL || "(empty)"} REPLY_TO=${REPLY_TO || "(empty)"} DELIVER=${DELIVER}`);
 const REPLY_CHANNEL = process.env.OPENCLAW_REPLY_CHANNEL || "";
 const REPLY_TO = process.env.OPENCLAW_REPLY_TO || "";
 const DELIVER = process.env.OPENCLAW_DELIVER === "true";
+console.log(`[bridge] using openclaw: ${OPENCLAW}`);
+console.log(`[bridge] env: REPLY_CHANNEL=${REPLY_CHANNEL || "(empty)"} REPLY_TO=${REPLY_TO || "(empty)"} DELIVER=${DELIVER}`);
 const MAX_MESSAGE = 4000;
 const MAX_HISTORY_ITEMS = 100;
 const MAX_HISTORY_CONTENT = 4000;
