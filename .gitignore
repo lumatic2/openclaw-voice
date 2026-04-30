@@ -58,3 +58,4 @@ android/.gradle/
 *.apk
 local.properties
 bridge/.env
+bridge/transcripts.jsonl

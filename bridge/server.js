@@ -1,9 +1,16 @@
 const express = require("express");
 const { execFile, execFileSync } = require("node:child_process");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const HOST = "0.0.0.0";
 const PORT = 18790;
 const TOKEN = process.env.BRIDGE_AUTH_TOKEN || "";
+const SESSION_KEY = process.env.OPENCLAW_SESSION_KEY || "";
+const SESSIONS_DIR = process.env.OPENCLAW_SESSIONS_DIR ||
+  path.join(process.env.HOME || "", ".openclaw/agents/main/sessions");
+const TRANSCRIPTS_FILE = path.join(__dirname, "transcripts.jsonl");
+const MAX_MESSAGE = 4000;
 
 function resolveOpenClaw() {
   if (process.env.OPENCLAW_BIN) return process.env.OPENCLAW_BIN;
@@ -11,24 +18,17 @@ function resolveOpenClaw() {
     return execFileSync("/usr/bin/which", ["openclaw"], { encoding: "utf8" }).trim();
   } catch (_) {}
   try {
-    // nvm path is not in PATH for non-login shells; try a login shell
     return execFileSync("/bin/bash", ["-lc", "command -v openclaw"], { encoding: "utf8" }).trim();
   } catch (_) {}
   throw new Error("openclaw binary not found (set OPENCLAW_BIN)");
 }
 const OPENCLAW = resolveOpenClaw();
-const REPLY_CHANNEL = process.env.OPENCLAW_REPLY_CHANNEL || "";
-const REPLY_TO = process.env.OPENCLAW_REPLY_TO || "";
-const DELIVER = process.env.OPENCLAW_DELIVER === "true";
-console.log(`[bridge] using openclaw: ${OPENCLAW}`);
-console.log(`[bridge] env: REPLY_CHANNEL=${REPLY_CHANNEL || "(empty)"} REPLY_TO=${REPLY_TO || "(empty)"} DELIVER=${DELIVER}`);
-const MAX_MESSAGE = 4000;
-const MAX_HISTORY_ITEMS = 100;
-const MAX_HISTORY_CONTENT = 4000;
+console.log(`[bridge] openclaw=${OPENCLAW}`);
+console.log(`[bridge] session_key=${SESSION_KEY || "(none → fallback to legacy CLI agent)"}`);
+console.log(`[bridge] sessions_dir=${SESSIONS_DIR}`);
 
 const app = express();
 app.use(express.json({ limit: "64kb" }));
-
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
@@ -37,107 +37,134 @@ app.use((req, res, next) => {
   next();
 });
 
-function buildPrompt(message, history) {
-  const lines = [];
-  for (const item of history) {
-    lines.push(`${item.role}: ${item.content}`);
-  }
-  lines.push(`user: ${message}`);
-  return lines.join("\n");
-}
-
-function parseReply(stdout) {
-  const out = String(stdout || "").trim();
-  if (!out) return "";
-  try {
-    const parsed = JSON.parse(out);
-    if (typeof parsed === "string") return parsed;
-    if (parsed && typeof parsed.reply === "string") return parsed.reply;
-    if (parsed && typeof parsed.message === "string") return parsed.message;
-    if (parsed && typeof parsed.content === "string") return parsed.content;
-  } catch (_) {}
-  const lines = out.split(/\r?\n/).map((v) => v.trim()).filter(Boolean);
-  return lines.length ? lines[lines.length - 1] : out;
-}
-
-function runOpenClaw(message) {
-  const args = ["agent", "--agent", "main", "--message", message];
-  if (REPLY_CHANNEL) args.push("--reply-channel", REPLY_CHANNEL);
-  if (REPLY_TO) args.push("--reply-to", REPLY_TO);
-  if (DELIVER) args.push("--deliver");
-  console.log(`[bridge] spawn openclaw args: ${JSON.stringify(args)}`);
+function gatewayCall(method, params, timeoutMs = 60000) {
   return new Promise((resolve, reject) => {
     execFile(
       OPENCLAW,
-      args,
-      { timeout: 90000, maxBuffer: 1024 * 1024 },
+      ["gateway", "call", method, "--timeout", String(timeoutMs), "--params", JSON.stringify(params), "--json"],
+      { timeout: timeoutMs + 5000, maxBuffer: 4 * 1024 * 1024 },
       (error, stdout, stderr) => {
         if (error) {
-          const err = new Error("OPENCLAW_EXEC_FAILED");
-          err.code = error.code;
-          err.killed = error.killed;
-          err.signal = error.signal;
+          const err = new Error(`gateway_call_failed:${method}`);
           err.stderr = String(stderr || "").trim();
+          err.stdout = String(stdout || "").trim();
           return reject(err);
         }
-        resolve(parseReply(stdout));
+        try {
+          resolve(JSON.parse(stdout));
+        } catch (e) {
+          reject(new Error(`gateway_call_parse_error:${method}`));
+        }
       }
     );
   });
 }
 
+function loadSessionEntry(key) {
+  const file = path.join(SESSIONS_DIR, "sessions.json");
+  const data = JSON.parse(fs.readFileSync(file, "utf-8"));
+  const entry = data[key];
+  if (!entry || !entry.sessionId) throw new Error(`session not found: ${key}`);
+  return entry;
+}
+
+function readMessages(sessionId) {
+  const file = path.join(SESSIONS_DIR, `${sessionId}.jsonl`);
+  if (!fs.existsSync(file)) return [];
+  return fs.readFileSync(file, "utf-8")
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => { try { return JSON.parse(line); } catch { return null; } })
+    .filter(Boolean);
+}
+
+function extractAssistantText(msg) {
+  if (!msg) return "";
+  if (typeof msg.content === "string") return msg.content;
+  if (Array.isArray(msg.content)) {
+    return msg.content
+      .map((c) => (typeof c === "string" ? c : c?.text || c?.content || ""))
+      .filter(Boolean)
+      .join("\n");
+  }
+  if (typeof msg.text === "string") return msg.text;
+  return "";
+}
+
+function findReplyAfter(messages, baselineCount) {
+  for (let i = messages.length - 1; i >= baselineCount; i--) {
+    const m = messages[i];
+    if (m && (m.role === "assistant" || m.type === "assistant" || m.role === "model")) {
+      const text = extractAssistantText(m);
+      if (text) return text.trim();
+    }
+  }
+  return "";
+}
+
+function appendTranscript(record) {
+  try {
+    fs.appendFileSync(TRANSCRIPTS_FILE, JSON.stringify(record) + "\n");
+  } catch (e) {
+    console.error(`[bridge] transcript append failed: ${e.message}`);
+  }
+}
+
+async function runViaSessionRpc(message) {
+  const entry = loadSessionEntry(SESSION_KEY);
+  const baseline = readMessages(entry.sessionId).length;
+
+  const sendResp = await gatewayCall("sessions.send", {
+    key: SESSION_KEY,
+    message,
+  }, 30000);
+  const runId = sendResp?.runId;
+  if (!runId) throw new Error(`sessions.send returned no runId: ${JSON.stringify(sendResp).slice(0, 200)}`);
+
+  await gatewayCall("agent.wait", { runId, timeoutMs: 90000 }, 95000);
+
+  // Brief settle for jsonl flush
+  await new Promise((r) => setTimeout(r, 250));
+  const messages = readMessages(entry.sessionId);
+  const reply = findReplyAfter(messages, baseline);
+  if (!reply) throw new Error("no assistant reply after run");
+  return reply;
+}
+
 app.post("/api/chat", async (req, res) => {
-  const auth = req.headers.authorization || "";
-  if (auth !== `Bearer ${TOKEN}`) {
+  if ((req.headers.authorization || "") !== `Bearer ${TOKEN}`) {
     return res.status(401).json({ error: "Unauthorized" });
   }
-
-  const body = req.body || {};
-  const { message } = body;
-  const history = Array.isArray(body.history) ? body.history : [];
-
-  if (typeof message !== "string" || !message.trim() || message.length > MAX_MESSAGE) {
+  const message = String(req.body?.message || "").trim();
+  if (!message || message.length > MAX_MESSAGE) {
     return res.status(400).json({ error: `Invalid message (1-${MAX_MESSAGE} chars)` });
   }
-
-  if (history.length > MAX_HISTORY_ITEMS) {
-    return res.status(400).json({ error: `History too long (max ${MAX_HISTORY_ITEMS})` });
+  if (!SESSION_KEY) {
+    return res.status(500).json({ error: "OPENCLAW_SESSION_KEY not configured" });
   }
 
-  for (const item of history) {
-    if (!item || (item.role !== "user" && item.role !== "assistant" && item.role !== "system") || typeof item.content !== "string" || item.content.length > MAX_HISTORY_CONTENT) {
-      return res.status(400).json({ error: "Invalid history format" });
-    }
-  }
-
-  // When REPLY_TO is set, the gateway routes to a server-side session that already
-  // carries history (e.g., Telegram); ignore client-supplied history.
-  const payload = REPLY_TO ? message.trim() : buildPrompt(message.trim(), history);
-
+  const startedAt = Date.now();
   try {
-    const reply = await runOpenClaw(payload);
-    if (!reply) return res.status(502).json({ error: "Empty reply from OpenClaw" });
+    const reply = await runViaSessionRpc(message);
+    const elapsed = Date.now() - startedAt;
+    appendTranscript({ ts: new Date().toISOString(), elapsed_ms: elapsed, message, reply });
+    console.log(`[bridge] turn ok in ${elapsed}ms`);
     return res.json({ reply });
   } catch (err) {
-    if (err && (err.signal === "SIGTERM" || err.code === null)) {
-      return res.status(504).json({ error: "OpenClaw timeout (90s)" });
-    }
-    const detail = err && err.stderr ? err.stderr.slice(0, 300) : "OpenClaw execution failed";
-    return res.status(502).json({ error: detail });
+    const elapsed = Date.now() - startedAt;
+    const detail = err?.stderr || err?.message || "unknown_error";
+    console.error(`[bridge] turn failed in ${elapsed}ms: ${detail}`);
+    appendTranscript({ ts: new Date().toISOString(), elapsed_ms: elapsed, message, error: detail.slice(0, 500) });
+    return res.status(502).json({ error: detail.slice(0, 300) });
   }
 });
 
-const fs = require("node:fs");
-const path = require("node:path");
-
 app.get("/api/tunnel-url", (req, res) => {
-  const auth = req.headers.authorization || "";
-  if (auth !== `Bearer ${TOKEN}`) {
+  if ((req.headers.authorization || "") !== `Bearer ${TOKEN}`) {
     return res.status(401).json({ error: "Unauthorized" });
   }
-  const urlFile = path.join(__dirname, "tunnel-url.txt");
   try {
-    const url = fs.readFileSync(urlFile, "utf-8").trim();
+    const url = fs.readFileSync(path.join(__dirname, "tunnel-url.txt"), "utf-8").trim();
     return res.json({ url });
   } catch {
     return res.status(404).json({ error: "Tunnel URL not available" });
